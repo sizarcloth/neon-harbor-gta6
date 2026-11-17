@@ -1,53 +1,69 @@
-// Keyboard and pointer input. Held keys give a steering direction; one-shot presses (start or
-// restart, pause) are queued as bit flags and taken once by the loop, so a press between two
-// frames is never lost and never counted twice.
+// Keyboard + mouse input. Movement keys are polled by the sim; action
+// keys (E/Q/F/P/M/B/Esc) fire callbacks on keydown. Left-click (a press
+// with almost no drag) is the shoot/punch action; dragging orbits the
+// camera. All listeners live here so the sim never touches the DOM.
+export class Input {
+  constructor(canvas) {
+    this.keys = new Set();
+    this.canvas = canvas;
+    this.orbitDX = 0;
+    this.orbitDY = 0;
+    this.dragging = false;
+    this.onAction = null;
+    this.onClick = null;
+    this._downPos = null;
+    this._downTime = 0;
 
-export const ACTION_CONFIRM = 1;
-export const ACTION_PAUSE = 2;
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      this.keys.add(e.code);
+      if (this.onAction) this.onAction(e.code);
+      if (['Space', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
+    });
+    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+    window.addEventListener('blur', () => this.keys.clear());
 
-const LEFT = new Set(['ArrowLeft', 'KeyA']);
-const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const CONFIRM = new Set(['Space', 'Enter']);
-const PAUSE = new Set(['KeyP', 'Escape']);
+    canvas.addEventListener('pointerdown', (e) => {
+      this.dragging = true;
+      this._downPos = { x: e.clientX, y: e.clientY };
+      this._downTime = performance.now();
+      try { canvas.setPointerCapture(e.pointerId); } catch { /* headless: no capture */ }
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      if (!this.dragging) return;
+      this.orbitDX += e.movementX || 0;
+      this.orbitDY += e.movementY || 0;
+    });
+    canvas.addEventListener('pointerup', (e) => {
+      if (!this.dragging) return;
+      this.dragging = false;
+      const moved = this._downPos
+        ? Math.hypot(e.clientX - this._downPos.x, e.clientY - this._downPos.y)
+        : 99;
+      const dt = performance.now() - this._downTime;
+      if (moved < 6 && dt < 500 && this.onClick) this.onClick(e.clientX, e.clientY);
+      this._downPos = null;
+    });
+    canvas.addEventListener('pointercancel', () => { this.dragging = false; });
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
 
-export function createInput(target) {
-  let left = false;
-  let right = false;
-  let actions = 0;
+  isDown(code) {
+    return this.keys.has(code);
+  }
 
-  window.addEventListener('keydown', (event) => {
-    if (LEFT.has(event.code)) left = true;
-    else if (RIGHT.has(event.code)) right = true;
-    else if (CONFIRM.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_CONFIRM;
-    } else if (PAUSE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PAUSE;
-    } else return;
-    event.preventDefault();
-  });
-  window.addEventListener('keyup', (event) => {
-    if (LEFT.has(event.code)) left = false;
-    else if (RIGHT.has(event.code)) right = false;
-  });
-  // A key released while the tab is hidden never sends keyup: let go of everything on blur.
-  window.addEventListener('blur', () => {
-    left = false;
-    right = false;
-  });
-  target.addEventListener('pointerdown', () => {
-    actions |= ACTION_CONFIRM;
-  });
+  // Consume accumulated orbit drag since the last frame.
+  takeOrbit() {
+    const dx = this.orbitDX;
+    const dy = this.orbitDY;
+    this.orbitDX = 0;
+    this.orbitDY = 0;
+    return { dx, dy };
+  }
 
-  return {
-    /** -1 for left, 1 for right, 0 for neither or both. */
-    direction() {
-      return (right ? 1 : 0) - (left ? 1 : 0);
-    },
-    /** The one-shot presses since the last call, as ACTION_* flags. */
-    takeActions() {
-      const taken = actions;
-      actions = 0;
-      return taken;
-    },
-  };
+  clear() {
+    this.keys.clear();
+    this.orbitDX = 0;
+    this.orbitDY = 0;
+  }
 }

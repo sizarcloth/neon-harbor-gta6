@@ -1,79 +1,94 @@
-// The screenshot scenes behind ?shot=start|play|end. Each one plays the real rules forward from a
-// fresh world for a fixed number of steps, steered by a simple autopilot (look ahead each way the
-// paddle could move, keep clear of blocks, chase the lowest coin when that is safe), so the frame
-// is what a short game really looks like and the same seed always gives the same frame.
-import { FIELD, PLAYER, STEP } from './config.js';
-import { EVENT_OVER, KIND_BLOCK } from './world.js';
-import { SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
+// ?shot= staging: puts the game in a photogenic state for each dossier
+// screenshot, then the caller steps the sim (shotPreroll seconds) and
+// renders. The 3 s preroll lets the mission banner and toast fade so
+// the frame shows the street, not the UI text.
+// Density rules (from the v1 review): drive + mission shots must be
+// packed with traffic, peds, buildings and props; the chase shot needs
+// police cruisers big and close in frame WITHOUT covering the player's
+// car, so the camera sits to the side and the cruisers run offset.
+import { Car } from './vehicles.js';
 
-const START_SECONDS = 5;
-const PLAY_SECONDS = 26;
-const END_LIMIT_SECONDS = 600;
-/**
- * How far ahead, in seconds, the autopilot checks each way it could move: the play scene's pilot
- * looks well ahead and keeps all its lives; the end scene's looks only a moment ahead, so it is
- * caught out once the blocks speed up, as a hurried player is.
- */
-const HORIZON_PLAY = 0.7;
-const HORIZON_END = 0.25;
-const SAMPLE = 1 / 30;
-const DIRECTIONS = [0, -1, 1];
-/** Extra room, each side, it keeps between the paddle and a block. */
-const MARGIN = 10;
-
-/** Seconds until moving in `direction` (-1, 0, 1) runs the paddle into a block; Infinity when it never does. */
-function timeToHit(state, direction, horizon) {
-  const player = state.player;
-  for (let t = SAMPLE; t <= horizon; t += SAMPLE) {
-    const x = Math.min(FIELD.width - player.width, Math.max(0, player.x + direction * PLAYER.speed * t));
-    for (let index = 0; index < state.items.length; index += 1) {
-      const item = state.items[index];
-      if (!item.active || item.kind !== KIND_BLOCK) continue;
-      const y = item.y + item.speed * t;
-      if (y + item.height > player.y && y < player.y + player.height && item.x < x + player.width + MARGIN && item.x + item.width > x - MARGIN) return t;
+export function setupShot(game, name) {
+  game.shotPreroll = 0.9;
+  if (name === 'start') {
+    // Title screen over the city; the camera orbits slowly.
+    game.showTitleScreen();
+    game.cameraRig.titleAngle = 2.4;
+    return;
+  }
+  if (name === 'drive') {
+    game.startNewGame();
+    game.shotPreroll = 3.0;
+    // Drive north up road x=0 through downtown: buildings both sides.
+    const sedan = game.parkedCars[0];
+    game.enterCarDirect(sedan);
+    sedan.x = 0;
+    sedan.z = 40;
+    sedan.heading = Math.PI;
+    sedan.speed = 14;
+    sedan.cruise = 14;
+    sedan.syncMesh();
+    game.player.heading = Math.PI;
+    // Extra traffic on the same road so the frame reads busy.
+    game.addTrafficAt(1.8, 8, 3, 0);
+    game.addTrafficAt(-1.8, -24, 3, 0);
+    game.addTrafficAt(1.8, 72, 2, 0);
+    // Extra pedestrians on the sidewalks AHEAD of the car (it drives
+    // north, so they start north of it).
+    for (const [x, z, dir] of [[5, -12, 1], [-5, -24, -1], [5, -36, -1], [-5, -8, 1]]) {
+      game.addPedAt(x, z, 'z', 0, x > 0 ? 5 : -5, dir);
     }
+    game.cameraRig.shotDist = 7.5;
+    game.cameraRig.shotHeight = 3.0;
+    return;
   }
-  return Infinity;
-}
-
-/** Of the safe ways to move, the one toward the lowest coin (or the centre); else the one that is hit last. */
-function autopilot(state, horizon) {
-  const player = state.player;
-  let coin = null;
-  for (let index = 0; index < state.items.length; index += 1) {
-    const item = state.items[index];
-    if (item.active && item.kind !== KIND_BLOCK && (coin === null || item.y > coin.y)) coin = item;
+  if (name === 'chase') {
+    game.startNewGame();
+    game.shotPreroll = 3.0;
+    game.missions.startMission(2);
+    game.police.setWanted(3);
+    // Player in the sports coupe, speeding east on road z=0.
+    const coupe = new Car(game.scene, {
+      type: 'sports', color: 0xc23b2e, x: -60, z: 0, heading: Math.PI / 2,
+    });
+    game.parkedCars.push(coupe);
+    game.enterCarDirect(coupe);
+    coupe.speed = 24;
+    coupe.cruise = 24;
+    coupe.syncMesh();
+    game.player.heading = Math.PI / 2;
+    // Two cruisers tight behind, offset to either side so they flank
+    // the player car instead of stacking up behind the camera.
+    const c1 = game.police.spawnCruiser(-72, 2.5, Math.PI / 2);
+    c1.speed = 24;
+    const c2 = game.police.spawnCruiser(-76, -2.5, Math.PI / 2);
+    c2.speed = 24;
+    // Traffic ahead to dodge.
+    game.addTrafficAt(48, 1.8, 0, 0);
+    game.addTrafficAt(86, -1.8, 0, 0);
+    // Front-side camera, ahead of the coupe on the road and looking
+    // back: the coupe drives toward the lens with both cruisers
+    // visible behind it. The offset keeps the camera on the road
+    // (z +4.1, buildings start at z 6) so the pull-in never fires.
+    game.cameraRig.orbit = Math.PI - 0.35;
+    game.cameraRig.shotDist = 12;
+    game.cameraRig.shotHeight = 5.0;
+    return;
   }
-  const target = coin === null ? FIELD.width / 2 : coin.x + coin.width / 2;
-  const centre = player.x + player.width / 2;
-  const wanted = target > centre + 8 ? 1 : target < centre - 8 ? -1 : 0;
-  let best = wanted;
-  let bestTime = timeToHit(state, wanted, horizon);
-  for (let index = 0; index < DIRECTIONS.length && bestTime !== Infinity; index += 1) {
-    const time = timeToHit(state, DIRECTIONS[index], horizon);
-    if (time > bestTime) {
-      bestTime = time;
-      best = DIRECTIONS[index];
-    }
+  if (name === 'mission') {
+    game.startNewGame();
+    game.shotPreroll = 3.0;
+    game.missions.startMission(3);
+    game.missions.setStep(1);
+    // On foot between the crates, guards closing in, crane and
+    // containers in the background. Low close camera, less empty dock.
+    game.player.x = 166;
+    game.player.z = -6;
+    game.player.heading = Math.PI / 2;
+    game.player.mesh.position.set(166, 0, -6);
+    game.player.mesh.rotation.y = Math.PI / 2;
+    game.cameraRig.shotDist = 4.8;
+    game.cameraRig.shotHeight = 2.6;
+    return;
   }
-  return best;
-}
-
-/**
- * Set `world` to the named scene (start, play or end; any other name is start) and return the
- * screen to draw over it and the best score to show.
- */
-export function stageShot(name, world) {
-  world.reset();
-  if (name !== 'play' && name !== 'end') {
-    for (let index = 0; index < START_SECONDS / STEP; index += 1) world.step(STEP, 0, true);
-    return { screen: SCREEN_TITLE, best: 0 };
-  }
-  const limit = name === 'end' ? END_LIMIT_SECONDS : PLAY_SECONDS;
-  const horizon = name === 'end' ? HORIZON_END : HORIZON_PLAY;
-  for (let index = 0; index < limit / STEP; index += 1) {
-    if (world.step(STEP, autopilot(world.state, horizon), false) & EVENT_OVER) break;
-  }
-  const over = world.state.lives === 0;
-  return { screen: over ? SCREEN_OVER : SCREEN_PLAY, best: world.state.score };
 }
