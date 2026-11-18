@@ -1,8 +1,8 @@
 # NEON HARBOR — Port Solmar
 
-[![make.fun bounty](https://img.shields.io/badge/make.fun-gta6--01-ff9a3c)](https://make.fun)
-[![NEON HARBOR](https://img.shields.io/badge/game-NEON%20HARBOR-ffd23c)](https://make.fun)
-[![Port Solmar](https://img.shields.io/badge/city-Port%20Solmar-2f6ec9)](https://make.fun)
+[![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/sizarcloth/neon-harbor-gta6/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/sizarcloth/neon-harbor-gta6/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
 An open-world crime game set in the sun-soaked neon coastal city of **Port Solmar**.
 You are **Rae Voss**, and you owe $5,000 to the harbor crew. Five jobs stand between
