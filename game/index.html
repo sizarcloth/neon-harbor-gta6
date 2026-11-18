@@ -1,19 +1,143 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
+<link rel="icon" href="data:,">
+<title>NEON HARBOR — Port Solmar</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #10141f; }
+  body { font-family: "Segoe UI", system-ui, -apple-system, sans-serif; color: #f2ede4; }
+  canvas { display: block; }
+  #game-container { position: fixed; inset: 0; }
+  #game-container canvas { width: 100%; height: 100%; }
+
+  /* ---------- HUD (pointer-events none except buttons) ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; display: none; z-index: 5; }
+  .hud-panel { background: rgba(12, 16, 28, 0.72); border: 1px solid rgba(255, 190, 90, 0.35); border-radius: 10px; }
+  #hud-top-right { position: absolute; top: 14px; right: 14px; padding: 10px 14px; text-align: right; min-width: 190px; }
+  #wanted { font-size: 22px; letter-spacing: 3px; line-height: 1.1; }
+  #money { font-size: 26px; font-weight: 800; color: #7ae05a; margin-top: 4px; }
+  #health-bar { width: 100%; height: 10px; background: rgba(255,255,255,0.15); border-radius: 5px; margin-top: 8px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #7ae05a; border-radius: 5px; transition: width 0.2s; }
+  #ammo { font-size: 13px; font-weight: 700; color: #ffd23c; margin-top: 6px; letter-spacing: 1px; }
+  #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); padding: 9px 18px; font-size: 15px; font-weight: 600; max-width: 46vw; text-align: center; }
+  #minimap-wrap { position: absolute; left: 14px; bottom: 14px; padding: 6px; }
+  #minimap { width: 176px; height: 176px; border-radius: 6px; }
+  #speedo { position: absolute; right: 14px; bottom: 14px; padding: 10px 16px; text-align: center; display: none; }
+  #speed-val { font-size: 34px; font-weight: 800; line-height: 1; }
+  #speedo .unit { font-size: 11px; letter-spacing: 2px; color: #ffb85a; }
+  #prompt { position: absolute; left: 50%; bottom: 96px; transform: translateX(-50%); padding: 8px 16px; font-size: 14px; font-weight: 600; opacity: 0; transition: opacity 0.15s; }
+  #toast { position: absolute; left: 50%; bottom: 140px; transform: translateX(-50%); padding: 9px 18px; font-size: 15px; font-weight: 600; background: rgba(12,16,28,0.85); border: 1px solid rgba(255,190,90,0.5); border-radius: 10px; opacity: 0; transition: opacity 0.25s; }
+  #banner { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); text-align: center; opacity: 0; transition: opacity 0.3s; text-shadow: 0 2px 18px rgba(0,0,0,0.8); }
+  #banner-title { font-size: 44px; font-weight: 900; letter-spacing: 4px; color: #ffd23c; }
+  #banner-sub { font-size: 17px; margin-top: 6px; color: #f2ede4; }
+
+  /* ---------- Screens ---------- */
+  .screen { position: fixed; inset: 0; z-index: 10; display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; background: radial-gradient(ellipse at 50% 30%, rgba(30, 20, 60, 0.55), rgba(8, 10, 20, 0.88)); }
+  .screen h1 { font-size: 64px; font-weight: 900; letter-spacing: 8px; color: #ffd23c; text-shadow: 0 0 32px rgba(255, 150, 60, 0.65), 0 4px 0 rgba(0,0,0,0.4); }
+  .screen h2 { font-size: 20px; font-weight: 400; letter-spacing: 6px; color: #ffb85a; margin-top: 2px; }
+  .screen p { max-width: 560px; margin: 14px 20px 0; font-size: 15px; line-height: 1.55; color: #d8d2c4; }
+  .btn { pointer-events: auto; display: inline-block; margin: 8px 6px 0; padding: 12px 30px; font-size: 16px; font-weight: 800; letter-spacing: 2px; color: #14100a; background: linear-gradient(180deg, #ffd23c, #ff9a3c); border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 0 #a85a10, 0 8px 24px rgba(0,0,0,0.5); }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #a85a10; }
+  .btn.secondary { background: rgba(255,255,255,0.12); color: #f2ede4; border: 1px solid rgba(255,255,255,0.35); box-shadow: none; }
+  .btn-row { margin-top: 22px; }
+  .controls { margin-top: 26px; font-size: 13px; line-height: 1.9; color: #b8b2a4; }
+  .controls b { color: #ffd23c; }
+  #title-screen { display: flex; }
+  #win-stats { margin-top: 16px; font-size: 16px; line-height: 1.8; color: #ffd23c; font-weight: 700; }
+
+  /* ---------- Shop ---------- */
+  #shop-panel { background: rgba(8, 10, 20, 0.82); }
+  .shop-card { background: rgba(16, 20, 34, 0.95); border: 1px solid rgba(255,190,90,0.4); border-radius: 14px; padding: 26px 34px; min-width: 380px; }
+  .shop-card h2 { font-size: 26px; letter-spacing: 3px; color: #ffd23c; margin-bottom: 4px; }
+  #shop-money { font-size: 20px; font-weight: 800; color: #7ae05a; margin-bottom: 16px; }
+  .shop-item { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 9px 0; border-top: 1px solid rgba(255,255,255,0.1); font-size: 15px; }
+  .shop-item .price { color: #ffd23c; font-weight: 700; }
+  .shop-item .btn { margin: 0; padding: 7px 16px; font-size: 13px; }
+
+  #flash { position: fixed; inset: 0; pointer-events: none; z-index: 8; background: #ff3b30; opacity: 0; }
 </style>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
-<p id="status" role="status" aria-live="polite"></p>
+<div id="game-container"></div>
+<div id="flash"></div>
+
+<div id="hud">
+  <div id="hud-top-right" class="hud-panel">
+    <div id="wanted">☆☆☆☆☆</div>
+    <div id="money">$0</div>
+    <div id="health-bar"><div id="health-fill"></div></div>
+    <div id="ammo">FISTS</div>
+  </div>
+  <div id="objective" class="hud-panel">Welcome to Port Solmar</div>
+  <div id="minimap-wrap" class="hud-panel"><canvas id="minimap" width="176" height="176"></canvas></div>
+  <div id="speedo" class="hud-panel"><div id="speed-val">0</div><div class="unit">KM/H</div></div>
+  <div id="prompt" class="hud-panel"></div>
+  <div id="toast"></div>
+  <div id="banner"><div id="banner-title"></div><div id="banner-sub"></div></div>
+</div>
+
+<div id="title-screen" class="screen">
+  <h1>NEON HARBOR</h1>
+  <h2>PORT SOLMAR</h2>
+  <p>Rae Voss owes $5,000 to the harbor crew and has five jobs to pay it off.
+  Steal cars, outrun the law, and settle the debt before the sun goes down on Solmar.</p>
+  <div class="btn-row">
+    <button id="btn-new" class="btn">NEW GAME</button>
+    <button id="btn-continue" class="btn secondary">CONTINUE</button>
+  </div>
+  <div class="controls">
+    <b>WASD</b> move / drive &nbsp; <b>Shift</b> sprint &nbsp; <b>Space</b> jump / handbrake<br>
+    <b>E</b> enter / exit car &nbsp; <b>F</b> punch &nbsp; <b>Click</b> shoot &nbsp; <b>B</b> shop (at garage)<br>
+    <b>Esc</b> pause &nbsp; <b>M</b> mute &nbsp; drag mouse to look around
+  </div>
+</div>
+
+<div id="pause-menu" class="screen">
+  <h1 style="font-size:44px">PAUSED</h1>
+  <p>Progress is saved automatically. The city waits for no one, Rae.</p>
+  <div class="btn-row">
+    <button id="btn-resume" class="btn">RESUME</button>
+    <button id="btn-restart" class="btn secondary">RESTART MISSION</button>
+    <button id="btn-mute" class="btn secondary">Sound: On</button>
+  </div>
+</div>
+
+<div id="death-screen" class="screen">
+  <h1 style="font-size:44px; color:#e05a4f">WASTED</h1>
+  <p>Rae went down in Port Solmar. The hospital patches you up for 10% of your cash.</p>
+  <div class="btn-row">
+    <button id="btn-respawn" class="btn">RESPAWN AT HOSPITAL</button>
+  </div>
+</div>
+
+<div id="win-screen" class="screen">
+  <h1 style="font-size:44px">DEBT PAID</h1>
+  <p>Rae Voss is free. The harbor belongs to whoever dares to take it, and tonight, that is you.</p>
+  <div id="win-stats"></div>
+  <div class="btn-row">
+    <button id="btn-again" class="btn">PLAY AGAIN</button>
+  </div>
+</div>
+
+<div id="shop-panel" class="screen">
+  <div class="shop-card">
+    <h2>SUNSET GARAGE</h2>
+    <div id="shop-money">$0</div>
+    <div class="shop-item"><span>Sports coupe, delivered here</span><span class="price">$1500</span><button id="btn-buy-car" class="btn">BUY</button></div>
+    <div class="shop-item"><span>Full health restore</span><span class="price">$50</span><button id="btn-buy-health" class="btn">BUY</button></div>
+    <div class="shop-item"><span>Pistol ammo +12</span><span class="price">$30</span><button id="btn-buy-ammo" class="btn">BUY</button></div>
+    <div class="shop-item"><span>Clear wanted level</span><span class="price">$100</span><button id="btn-clear-wanted" class="btn">BUY</button></div>
+    <div class="btn-row"><button id="btn-shop-close" class="btn secondary">CLOSE</button></div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
