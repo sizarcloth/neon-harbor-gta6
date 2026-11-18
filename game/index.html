@@ -3,17 +3,129 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
+<title>NEON HARBOR: Port Solmar</title>
+<link rel="icon" href="data:,">
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #1a2233;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #f5efe4; }
   #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
   #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  button { font: inherit; cursor: pointer; border: 2px solid #ffb020; background: #141a2c; color: #f5efe4;
+    padding: 10px 22px; border-radius: 4px; font-weight: 700; letter-spacing: 0.04em; }
+  button:hover { background: #ffb020; color: #141a2c; }
+  button:focus-visible { outline: 3px solid #ff2e88; outline-offset: 2px; }
+  .screen { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; z-index: 20; }
+  #screen-title { display: flex; background: radial-gradient(ellipse at center, rgba(10,14,26,0.25) 0%, rgba(10,14,26,0.82) 100%); }
+  #screen-title h1 { font-size: 64px; margin: 0; letter-spacing: 0.12em; color: #ffb020;
+    text-shadow: 0 0 24px rgba(255,46,136,0.75), 0 2px 0 #7a1030; }
+  #screen-title h2 { font-size: 20px; margin: 6px 0 18px; letter-spacing: 0.5em; color: #2ee6ff; font-weight: 600; }
+  #screen-title .story { max-width: 560px; font-size: 17px; line-height: 1.5; margin: 0 0 22px; color: #f5efe4; }
+  #screen-title .controls { display: grid; grid-template-columns: auto auto; gap: 4px 18px; text-align: left;
+    font-size: 14px; color: #cfc8b8; margin: 0 0 22px; }
+  #screen-title .controls b { color: #ffb020; font-weight: 700; }
+  .btnrow { display: flex; gap: 14px; }
+  #save-info { margin-top: 14px; font-size: 14px; color: #cfc8b8; }
+  .fineprint { margin-top: 26px; font-size: 13px; color: #9a938a; }
+  #screen-pause, #screen-win, #screen-dead { background: rgba(10,14,26,0.82); }
+  #screen-pause h1, #screen-win h1 { font-size: 44px; margin: 0 0 10px; letter-spacing: 0.1em; color: #ffb020; }
+  #screen-win h1 { color: #2ee6ff; }
+  #screen-dead h1 { font-size: 64px; margin: 0; letter-spacing: 0.14em; color: #ff5a3c; }
+  #screen-dead p { font-size: 18px; }
+  #win-stats { font-size: 18px; margin: 0 0 24px; }
+  /* HUD: text stays clear of the top-left corner. */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; display: none; }
+  .panel { background: rgba(12,16,28,0.78); border: 1px solid rgba(255,176,32,0.35); border-radius: 4px; }
+  #topright { position: absolute; top: 14px; right: 14px; padding: 10px 14px; text-align: right; min-width: 190px; }
+  #wanted { font-size: 24px; letter-spacing: 3px; line-height: 1; }
+  #money { font-size: 24px; font-weight: 800; color: #ffb020; margin-top: 4px; }
+  #debt { font-size: 13px; color: #ff8a7a; }
+  #healthrow { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  #healthbar { flex: 1; height: 10px; background: #2a3040; border-radius: 2px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #2ee66b; }
+  #health-num { font-size: 13px; font-weight: 700; }
+  #ammo { font-size: 14px; margin-top: 6px; color: #cfc8b8; }
+  #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); padding: 8px 18px;
+    font-size: 16px; font-weight: 700; max-width: 560px; text-align: center; }
+  #minimap { position: absolute; left: 14px; bottom: 14px; border: 1px solid rgba(255,176,32,0.5); border-radius: 4px; }
+  #speed { position: absolute; right: 14px; bottom: 14px; padding: 8px 14px; font-size: 22px; font-weight: 800; color: #2ee6ff; }
+  #toast { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); padding: 8px 16px;
+    font-size: 15px; font-weight: 600; opacity: 0; transition: opacity 0.3s; white-space: nowrap; }
+  #banner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); text-align: center;
+    opacity: 0; transition: opacity 0.4s; pointer-events: none; }
+  #banner-title { font-size: 40px; font-weight: 900; letter-spacing: 0.1em; color: #ffb020;
+    text-shadow: 0 0 20px rgba(255,46,136,0.7); }
+  #banner-text { font-size: 17px; color: #f5efe4; margin-top: 6px; text-shadow: 0 1px 4px #000; }
+  #vignette { position: fixed; inset: 0; pointer-events: none; z-index: 15; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(255,30,30,0.55) 100%); }
+  #mutebtn { position: absolute; top: 14px; right: 14px; margin-top: 156px; pointer-events: auto; padding: 6px 12px; font-size: 13px; }
 </style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
+<canvas id="game" aria-label="NEON HARBOR: open-world crime game in Port Solmar"></canvas>
 <p id="status" role="status" aria-live="polite"></p>
+<div id="vignette"></div>
+
+<div id="hud">
+  <div id="topright" class="panel">
+    <div id="wanted" aria-label="Wanted level">☆☆☆☆☆</div>
+    <div id="money">$0</div>
+    <div id="debt">Debt $5000</div>
+    <div id="healthrow"><div id="healthbar"><div id="health-fill"></div></div><span id="health-num">100</span></div>
+    <div id="ammo">Fists</div>
+  </div>
+  <div id="objective" class="panel">First Fare: Pick up the passenger at Palm Ave</div>
+  <canvas id="minimap" width="176" height="176" aria-label="Minimap"></canvas>
+  <div id="speed" class="panel"></div>
+  <div id="toast" class="panel"></div>
+  <div id="banner"><div id="banner-title"></div><div id="banner-text"></div></div>
+  <button id="mutebtn" type="button">Mute</button>
+</div>
+
+<div id="screen-title" class="screen">
+  <h1>NEON HARBOR</h1>
+  <h2>PORT SOLMAR</h2>
+  <p class="story">Rae Voss owes Sol $5000. Five jobs. One sun-soaked city of neon, palms and police
+    sirens. Drive it, steal it, survive it, and the debt is gone.</p>
+  <div class="controls">
+    <span><b>WASD</b> move / drive</span><span><b>Shift</b> sprint</span>
+    <span><b>Space</b> jump / handbrake</span><span><b>Mouse drag</b> camera</span>
+    <span><b>E</b> enter / exit car</span><span><b>F</b> punch</span>
+    <span><b>Q</b> pistol</span><span><b>Click</b> shoot</span>
+    <span><b>P</b> pause</span><span><b>M</b> mute</span>
+  </div>
+  <div class="btnrow">
+    <button id="btn-new" type="button">New Game</button>
+    <button id="btn-continue" type="button">Continue</button>
+  </div>
+  <p id="save-info"></p>
+  <p class="fineprint">An original game for the make.fun gta6-01 bounty. No real places, people or brands.</p>
+</div>
+
+<div id="screen-pause" class="screen">
+  <h1>PAUSED</h1>
+  <div class="btnrow">
+    <button id="btn-resume" type="button">Resume</button>
+    <button id="btn-restart" type="button">Restart</button>
+    <button id="btn-quit" type="button">Quit to Title</button>
+    <button id="btn-pause-mute" type="button">Mute (M)</button>
+  </div>
+</div>
+
+<div id="screen-win" class="screen">
+  <h1>THE DEBT IS PAID</h1>
+  <p id="win-stats"></p>
+  <div class="btnrow"><button id="btn-again" type="button">Play Again</button></div>
+</div>
+
+<div id="screen-dead" class="screen">
+  <h1>WASTED</h1>
+  <p>Sol's crew dragged you to the hospital.</p>
+</div>
+
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
